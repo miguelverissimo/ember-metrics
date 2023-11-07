@@ -26,18 +26,6 @@ export default class Metrics extends Service {
    */
   context = {};
 
-  /**
-   * Indicates whether calls to the service will be forwarded to the adapters.
-   * This is determined by investigating the user's doNotTrack settings.
-   *
-   * Note that the doNotTrack specification is deprecated, and could stop
-   * working at any minute. As such should this feature not be detected we
-   * presume tracking is permitted.
-   *
-   * @property enabled
-   * @type Boolean
-   */
-  enabled = typeof navigator !== 'undefined' && navigator.doNotTrack !== '1';
 
   /**
    * Environment the host application is running in (e.g. development or production).
@@ -61,8 +49,9 @@ export default class Metrics extends Service {
     const config = owner.factoryFor('config:environment').class;
     const { metricsAdapters = [] } = config;
     const { environment = 'development' } = config;
+    const { ignoreDoNotTrack = 'false' } = config;
 
-    this._options = { metricsAdapters, environment };
+    this._options = { metricsAdapters, environment, ignoreDoNotTrack };
     this.appEnvironment = environment;
     this.activateAdapters(metricsAdapters);
   }
@@ -75,7 +64,7 @@ export default class Metrics extends Service {
    * @return {Object} instantiated adapters
    */
   activateAdapters(adapterOptions = []) {
-    if (!this.enabled) {
+    if (!this.isEnabled()) {
       return;
     }
 
@@ -125,20 +114,20 @@ export default class Metrics extends Service {
   _lookupAdapter(adapterName) {
     assert(
       '[ember-metrics] Could not find metrics adapter without a name.',
-      adapterName
+      adapterName,
     );
 
     const availableAdapter = getOwner(this).lookup(
-      `ember-metrics@metrics-adapter:${dasherize(adapterName)}`
+      `ember-metrics@metrics-adapter:${dasherize(adapterName)}`,
     );
     const localAdapter = getOwner(this).lookup(
-      `metrics-adapter:${dasherize(adapterName)}`
+      `metrics-adapter:${dasherize(adapterName)}`,
     );
 
     const adapter = localAdapter || availableAdapter;
     assert(
       `[ember-metrics] Could not find metrics adapter ${adapterName}.`,
-      adapter
+      adapter,
     );
 
     return adapter;
@@ -187,7 +176,7 @@ export default class Metrics extends Service {
    * @return {Void}
    */
   invoke(methodName, ...args) {
-    if (!this.enabled) {
+    if (!this.isEnabled()) {
       return;
     }
 
@@ -205,6 +194,24 @@ export default class Metrics extends Service {
       let adapter = this._adapters[adapterName];
       adapter && adapter[methodName]({ ...this.context, ...options });
     }
+  }
+
+  /**
+   * Indicates whether calls to the service will be forwarded to the adapters.
+   * This is determined by investigating the user's doNotTrack settings.
+   *
+   * Note that the doNotTrack specification is deprecated, and could stop
+   * working at any minute. As such should this feature not be detected we
+   * presume tracking is permitted.
+   *
+   * We also allow consumers to define a `ignoreDoNotTrack` configuration
+   * option, that will override the browser setting.
+   *
+   * @method isEnabled
+   * @return {Boolean}
+   */
+  isEnabled() {
+    return typeof navigator !== 'undefined' && (this._options.ignoreDoNotTrack === false ? navigator.doNotTrack !== '1' : true);
   }
 
   /**
